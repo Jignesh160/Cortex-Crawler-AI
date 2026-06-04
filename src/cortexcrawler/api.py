@@ -35,6 +35,36 @@ class KnowledgeBase:
         self._embedder: Embedder | None = None
         self._store: VectorStore | None = None
 
+    @classmethod
+    def for_aws(
+        cls,
+        bucket: str,
+        index: str = "cortex-kb",
+        region: str | None = None,
+        *,
+        answer_with_nova: bool = False,
+        embed_model: str = "amazon.titan-embed-image-v1",
+        nova_model: str = "amazon.nova-lite-v1:0",
+        embed_dim: int = 1024,
+    ) -> "KnowledgeBase":
+        """Configure the AWS backends explicitly (no env vars or .env needed).
+
+        Credentials are inherited from the host process via boto3's standard chain
+        (env vars / IAM role / instance profile) — nothing to pass here.
+
+        Set answer_with_nova=False (default) to use retrieval only (`.search()`),
+        letting your own chatbot LLM generate the answer.
+        """
+        cfg = load_config()
+        rag = cfg.raw["rag"]
+        rag["embedder"] = {"backend": "bedrock", "model_id": embed_model,
+                           "region": region, "dim": embed_dim}
+        rag["store"] = {"backend": "s3vectors", "bucket": bucket, "index": index,
+                        "region": region, "dim": embed_dim}
+        rag["answer"] = ({"backend": "bedrock", "model_id": nova_model, "region": region}
+                         if answer_with_nova else {"backend": "local"})
+        return cls(config=cfg)
+
     # --- lazy singletons so the chatbot can construct once and reuse ---
     @property
     def embedder(self) -> Embedder:
