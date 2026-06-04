@@ -119,7 +119,20 @@ def _resolve_path(path: str | Path | None) -> Path | None:
     return cwd_cfg if cwd_cfg.exists() else None
 
 
+def _maybe_load_dotenv() -> None:
+    """Best-effort: load a local .env into the environment if python-dotenv is
+    installed. No-op otherwise (env vars set directly still work)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = Path.cwd() / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+
+
 def load_config(path: str | Path | None = None) -> Config:
+    _maybe_load_dotenv()
     data = copy.deepcopy(DEFAULTS)
     p = _resolve_path(path)
     if p is not None:
