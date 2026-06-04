@@ -39,6 +39,21 @@ def _now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _image_title(src) -> str:
+    """Best available title for an image: alt -> caption -> surrounding text."""
+    for cand in (src.alt, src.caption):
+        c = (cand or "").strip()
+        if c:
+            return c
+    st = (src.surrounding_text or "").strip()
+    if st:
+        snippet = st[:80]
+        if len(st) > 80:
+            snippet = snippet.rsplit(" ", 1)[0] + "…"
+        return snippet
+    return "image"
+
+
 def _site_dir(url: str) -> str:
     return urlsplit(url).netloc.replace(":", "_")
 
@@ -105,8 +120,8 @@ class Emitter:
             (img_dir / f"{img.image_id}.json").write_text(
                 json.dumps(sidecar, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            image_meta.append({"image_id": img.image_id, "url": ref, "alt": img.src.alt})
-            label = img.src.alt or img.src.caption or "image"
+            label = _image_title(img.src)
+            image_meta.append({"image_id": img.image_id, "url": ref, "alt": label})
             appendix_lines.append(f"![{label}]({ref})")
 
         record = PageRecord(

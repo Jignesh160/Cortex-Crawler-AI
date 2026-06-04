@@ -6,7 +6,10 @@ the orchestration we own; the heavy lifting lives in the reused primitives.
 """
 from __future__ import annotations
 
+import fnmatch
+import re
 from collections import deque
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import tldextract
@@ -31,6 +34,59 @@ def _normalize(url: str) -> str:
 def _registered_domain(url: str) -> str:
     ext = tldextract.extract(url)
     return f"{ext.domain}.{ext.suffix}"
+
+
+def _in_scope(url: str, include: list[str], exclude: list[str]) -> bool:
+    """URL passes scope if it matches no exclude glob and (if include is set) at
+    least one include glob. Globs match against the full URL and its path."""
+    path = urlsplit(url).path
+    candidates = (url, path)
+    for pat in exclude or []:
+        if any(fnmatch.fnmatch(c, pat) for c in candidates):
+            return False
+    if include:
+        return any(fnmatch.fnmatch(c, pat) for pat in include for c in candidates)
+    return True
+
+
+def _top_lines(md: str, k: int = 3) -> list[str]:
+    """First k non-empty lines of a page body (where header/nav chrome sits)."""
+    out: list[str] = []
+    for ln in md.splitlines():
+        s = ln.strip()
+        if s:
+            out.append(s)
+        if len(out) >= k:
+            break
+    return out
+
+
+def _global_boilerplate(per_page_top: list[list[str]], min_frac: float = 0.8) -> set[str]:
+    """Lines that appear at the top of (almost) every page = site chrome.
+
+    Conservative: only considers the first few lines per page (so mid-page
+    section headings like 'Specifications' are never treated as boilerplate),
+    and requires a high cross-page frequency.
+    """
+    from collections import Counter
+    n = len(per_page_top)
+    if n < 3:
+        return set()
+    counts: Counter[str] = Counter()
+    for lines in per_page_top:
+        for s in set(lines):  # unique per page
+            counts[s] += 1
+    threshold = max(2, int(min_frac * n + 0.9999))
+    return {line for line, c in counts.items() if c >= threshold}
+
+
+def _strip_lines(md: str, drop: set[str]) -> str:
+    """Remove exact-match boilerplate lines; collapse the blank gaps they leave."""
+    if not drop:
+        return md
+    kept = [ln for ln in md.splitlines() if ln.strip() not in drop]
+    text = "\n".join(kept)
+    return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
 
 class Crawler:
@@ -84,14 +140,20 @@ class Crawler:
         max_pages = c.get("max_pages", 50)
         max_depth = c.get("max_depth", 2)
         same_domain = c.get("same_domain_only", True)
+        include = c.get("include", [])
+        exclude = c.get("exclude", [])
         seed_domain = _registered_domain(seed)
 
         queue: deque[tuple[str, int]] = deque([(_normalize(seed), 0)])
         seen: set[str] = {_normalize(seed)}
         written: list[str] = []
+        page_tops: list[list[str]] = []   # top lines per page, for boilerplate detection
 
         while queue and len(written) < max_pages:
             url, depth = queue.popleft()
+            if not _in_scope(url, include, exclude):
+                _log.debug("scope: excluded %s", url)
+                continue
             _log.info("crawl d%d %s", depth, url)
             try:
                 res = self.fetcher.fetch(url)
@@ -137,6 +199,7 @@ class Crawler:
                 status=status, depth=depth,
             )
             written.append(str(path))
+            page_tops.append(_top_lines(ext.markdown))
             _log.info("emit: %s", path)
 
             # Expand frontier.
@@ -153,4 +216,15 @@ class Crawler:
         self.fetcher.close()
         if self._dynamic is not None:
             self._dynamic.close()
+
+        # Cross-page cleanup: strip site-title / nav chrome that repeats on (nearly)
+        # every page, so it doesn't leak into each page's content.
+        boilerplate = _global_boilerplate(page_tops)
+        if boilerplate:
+            _log.info("stripping %d global boilerplate line(s) across %d pages",
+                      len(boilerplate), len(written))
+            for fp in written:
+                p = Path(fp)
+                cleaned = _strip_lines(p.read_text(encoding="utf-8"), boilerplate)
+                p.write_text(cleaned, encoding="utf-8")
         return written

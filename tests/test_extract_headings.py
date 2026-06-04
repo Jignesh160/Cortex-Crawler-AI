@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from cortexcrawler.engine.extract import _inject_headings, extract
+from cortexcrawler.engine.extract import _inject_headings, _pair_stat_cards, extract
 
 FIXTURE = Path(__file__).parent / "fixtures" / "multisection.html"
 
@@ -40,3 +40,17 @@ def test_extract_fixture_has_section_headings():
     ex = extract(html, "https://example.com/v27")
     heads = _headings(ex.markdown)
     assert len(heads) >= 4, f"expected >=4 headings, got {heads}"
+
+
+def test_pair_stat_cards_joins_value_and_label():
+    md = "449 Hp (335 kW)\n\nCombined Power\n\n505 N·m\n\nMaximum Torque"
+    out = _pair_stat_cards(md)
+    assert "Combined Power: 449 Hp (335 kW)" in out
+    assert "Maximum Torque: 505 N·m" in out
+
+
+def test_pair_stat_cards_leaves_prose_untouched():
+    prose = ("This is a normal sentence with the number 42 mentioned in passing "
+             "and it should not be reformatted as a stat card at all.")
+    md = f"{prose}\n\nAnother ordinary paragraph here without any pairing happening."
+    assert _pair_stat_cards(md) == md

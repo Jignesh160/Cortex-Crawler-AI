@@ -11,6 +11,15 @@ crawl:
   dynamic_fallback: true       # auto-render JS-heavy pages in a headless browser
   dynamic_min_chars: 200       # static extraction below this -> retry via Playwright
   dynamic_wait_ms: 2000        # settle time after page load (ms)
+  include: []                  # if non-empty, only URLs matching a glob are crawled
+  exclude:                     # URLs matching any glob are never fetched or emitted
+    - "*/cookies*"
+    - "*/legalNotice"
+    - "*/legal-notice"
+    - "*/privacy*"
+    - "*/request-for-quote*"
+    - "*/terms*"
+    - "*/login*"
 
 extract:
   min_text_chars: 200          # pages below this are marked status: empty/partial

@@ -52,6 +52,55 @@ def _existing_headings(md: str) -> set[str]:
     return {_norm(m.group(1)) for m in re.finditer(r"(?m)^#{1,6}\s+(.*)$", md)}
 
 
+def _is_stat_value(s: str) -> bool:
+    """A short 'stat card' value like '449 Hp (335 kW)', '505 N·m', '995km'."""
+    s = s.strip()
+    if not (2 <= len(s) <= 40):
+        return False
+    if not re.match(r"^[~<>≈]?\s*\d", s):       # starts with a number
+        return False
+    if not re.search(r"[A-Za-z°%·/]", s):        # carries a unit
+        return False
+    if s.endswith((".", "!", "?")):              # not a sentence
+        return False
+    return len(s.split()) <= 5
+
+
+def _is_stat_label(s: str) -> bool:
+    """A short descriptive label like 'Combined Power', 'Maximum Torque'."""
+    s = s.strip()
+    if not (2 <= len(s) <= 40):
+        return False
+    if any(ch.isdigit() for ch in s):
+        return False
+    if s[:1] in {"#", "-", "*", "|", "!", "[", ">"}:
+        return False
+    if s.endswith((".", "!", "?", ":")):
+        return False
+    return 1 <= len(s.split()) <= 5
+
+
+def _pair_stat_cards(md: str) -> str:
+    """Join adjacent value/label 'stat card' blocks into 'Label: Value' so a
+    number and its meaning stay together (helps both reading and retrieval)."""
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", md)]
+    out: list[str] = []
+    i = 0
+    while i < len(blocks):
+        a = blocks[i]
+        b = blocks[i + 1] if i + 1 < len(blocks) else None
+        if b is not None and _is_stat_value(a) and _is_stat_label(b):
+            out.append(f"{b}: {a}")
+            i += 2
+        elif b is not None and _is_stat_label(a) and _is_stat_value(b):
+            out.append(f"{a}: {b}")
+            i += 2
+        else:
+            out.append(blocks[i])
+            i += 1
+    return "\n\n".join(out)
+
+
 def _inject_headings(html: str, base_md: str) -> str:
     """Restore section headings that Trafilatura dropped.
 
@@ -177,8 +226,10 @@ def extract(html: str, url: str) -> Extraction:
         url=url,
     ) or ""
 
-    # Restore section headings that Trafilatura's extraction dropped.
+    # Restore section headings that Trafilatura's extraction dropped, then
+    # re-pair split number/label "stat cards".
     md = _inject_headings(html, md)
+    md = _pair_stat_cards(md)
 
     meta = trafilatura.extract_metadata(html)
     title = (meta.title if meta and meta.title else "") or "Untitled"
