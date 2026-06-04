@@ -131,6 +131,17 @@ def _maybe_load_dotenv() -> None:
         load_dotenv(env_path, override=False)
 
 
+def _reconcile_dims(cfg: dict) -> dict:
+    """Keep embedder dim and vector-store dim consistent. Titan = 1024 by default."""
+    rag = cfg.setdefault("rag", {})
+    emb = rag.setdefault("embedder", {})
+    store = rag.setdefault("store", {})
+    if emb.get("backend") == "bedrock" and emb.get("dim", 512) == 512:
+        emb["dim"] = 1024  # Titan multimodal default
+    store["dim"] = emb.get("dim", 1024 if emb.get("backend") == "bedrock" else 512)
+    return cfg
+
+
 def load_config(path: str | Path | None = None) -> Config:
     _maybe_load_dotenv()
     data = copy.deepcopy(DEFAULTS)
@@ -142,4 +153,5 @@ def load_config(path: str | Path | None = None) -> Config:
             file_cfg = yaml.safe_load(fh) or {}
         data = _deep_merge(data, file_cfg)
     data = _env_overrides(data)
+    data = _reconcile_dims(data)
     return Config(raw=data)

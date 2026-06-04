@@ -109,35 +109,67 @@ class S3VectorStore:
     query / metadata) is identical to LocalVectorStore, so swapping is config-only.
     """
 
-    def __init__(self, bucket: str, index: str, region: str | None = None):
+    # 'text' can be up to 1000 chars; keep big/free-text fields non-filterable.
+    NON_FILTERABLE = ["text", "image_url"]
+    _PUT_BATCH = 200  # stay well under API limits
+
+    def __init__(self, bucket: str, index: str, region: str | None = None,
+                 dim: int = 1024, distance_metric: str = "cosine"):
         import boto3
         self._client = boto3.client("s3vectors", region_name=region)
         self.bucket = bucket
         self.index = index
+        self.dim = dim
+        self.distance_metric = distance_metric
+
+    def ensure(self) -> None:
+        """Create the vector bucket + index if they don't already exist (idempotent)."""
+        try:
+            self._client.get_vector_bucket(vectorBucketName=self.bucket)
+        except self._client.exceptions.NotFoundException:
+            self._client.create_vector_bucket(vectorBucketName=self.bucket)
+        try:
+            self._client.get_index(vectorBucketName=self.bucket, indexName=self.index)
+        except self._client.exceptions.NotFoundException:
+            self._client.create_index(
+                vectorBucketName=self.bucket, indexName=self.index,
+                dataType="float32", dimension=self.dim,
+                distanceMetric=self.distance_metric,
+                metadataConfiguration={"nonFilterableMetadataKeys": self.NON_FILTERABLE},
+            )
 
     def upsert(self, records: list[Record]) -> int:
-        vectors = [
-            {"key": r.id,
-             "data": {"float32": r.vector.astype(np.float32).tolist()},
-             "metadata": r.metadata}
-            for r in records
-        ]
-        # Batched put_vectors; chunk to API limits in production.
-        self._client.put_vectors(vectorBucketName=self.bucket,
-                                  indexName=self.index, vectors=vectors)
-        return len(vectors)
+        total = 0
+        for i in range(0, len(records), self._PUT_BATCH):
+            batch = records[i:i + self._PUT_BATCH]
+            vectors = [
+                {"key": r.id,
+                 "data": {"float32": r.vector.astype(np.float32).tolist()},
+                 "metadata": r.metadata}
+                for r in batch
+            ]
+            self._client.put_vectors(vectorBucketName=self.bucket,
+                                     indexName=self.index, vectors=vectors)
+            total += len(vectors)
+        return total
 
     def query(self, vector: np.ndarray, top_k: int = 5,
               modality: str | None = None) -> list[Hit]:
-        flt = {"modality": modality} if modality else None
-        resp = self._client.query_vectors(
+        kwargs: dict = dict(
             vectorBucketName=self.bucket, indexName=self.index,
             queryVector={"float32": vector.astype(np.float32).tolist()},
-            topK=top_k, returnMetadata=True,
-            **({"filter": flt} if flt else {}),
+            topK=top_k, returnMetadata=True, returnDistance=True,
         )
-        return [Hit(id=v["key"], score=float(v.get("distance", 0.0)),
-                    metadata=v.get("metadata", {})) for v in resp.get("vectors", [])]
+        if modality:
+            kwargs["filter"] = {"modality": modality}
+        resp = self._client.query_vectors(**kwargs)
+        out: list[Hit] = []
+        for v in resp.get("vectors", []):
+            dist = float(v.get("distance", 0.0))
+            # Convert cosine distance -> similarity so scores match LocalVectorStore.
+            score = 1.0 - dist if self.distance_metric == "cosine" else -dist
+            out.append(Hit(id=v["key"], score=score, metadata=v.get("metadata", {})))
+        return out
 
     def all_vectors(self) -> np.ndarray:
         raise NotImplementedError("S3 Vectors does not bulk-export; not needed at query time")
@@ -149,5 +181,10 @@ class S3VectorStore:
 def get_store(cfg: dict) -> VectorStore:
     backend = (cfg or {}).get("backend", "local")
     if backend == "s3vectors":
-        return S3VectorStore(bucket=cfg["bucket"], index=cfg["index"], region=cfg.get("region"))
+        store = S3VectorStore(
+            bucket=cfg["bucket"], index=cfg["index"], region=cfg.get("region"),
+            dim=cfg.get("dim", 1024), distance_metric=cfg.get("distance_metric", "cosine"),
+        )
+        store.ensure()  # create bucket + index on first use
+        return store
     return LocalVectorStore(path=cfg.get("path", "index/local_store"))
