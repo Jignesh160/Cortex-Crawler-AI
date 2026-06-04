@@ -10,7 +10,7 @@ Installable Python package (`cortexcrawler`). Runs anywhere with built-in defaul
 ## Install
 
 ```bash
-pip install "git+https://github.com/your-org/cortexcrawler.git"
+pip install "git+https://github.com/Jignesh160/Context-Crawler-AI.git"
 # optional extras:
 pip install "cortexcrawler[aws]"      # Bedrock Titan/Nova + S3 Vectors
 pip install "cortexcrawler[dynamic]"  # Playwright for JS-heavy sites

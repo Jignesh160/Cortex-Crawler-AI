@@ -37,7 +37,7 @@ cortex-index = "cortexcrawler.cli:index_cmd"
 cortex-ask = "cortexcrawler.cli:ask_cmd"
 
 [project.urls]
-Homepage = "https://github.com/your-org/cortexcrawler"
+Homepage = "https://github.com/Jignesh160/Context-Crawler-AI"
 
 [tool.setuptools.packages.find]
 where = ["src"]
