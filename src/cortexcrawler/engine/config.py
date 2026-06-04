@@ -27,6 +27,9 @@ DEFAULTS: dict[str, Any] = {
         "max_depth": 2,
         "same_domain_only": True,
         "max_retries": 3,
+        "dynamic_fallback": True,   # auto-render JS pages when static yield is thin
+        "dynamic_min_chars": 200,   # static extraction below this -> retry via browser
+        "dynamic_wait_ms": 2000,    # settle time after load
     },
     "extract": {"min_text_chars": 200},
     "images": {

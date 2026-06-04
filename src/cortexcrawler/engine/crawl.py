@@ -55,6 +55,30 @@ class Crawler:
         self.min_text = cfg.extract.get("min_text_chars", 200)
         self.images_enabled = cfg.images.get("enabled", True)
 
+        # Dynamic (JS) rendering — created lazily on first thin page.
+        self.dynamic_enabled = c.get("dynamic_fallback", True)
+        self.dynamic_min_chars = c.get("dynamic_min_chars", 200)
+        self.dynamic_wait_ms = c.get("dynamic_wait_ms", 2000)
+        self._dynamic = None          # DynamicRenderer | None (lazy)
+        self._dynamic_tried = False   # only attempt to launch once per run
+
+    def _maybe_render(self, url: str) -> str | None:
+        """Launch (once) and use the headless browser for a JS-heavy page."""
+        if not self.dynamic_enabled or not self.politeness.allowed(url):
+            return None
+        if self._dynamic is None and not self._dynamic_tried:
+            from .dynamic import DynamicRenderer
+            self._dynamic_tried = True
+            c = self.cfg.crawl
+            self._dynamic = DynamicRenderer.create(
+                user_agent=c.get("user_agent", "CortexCrawlerBot/0.1"),
+                timeout=c.get("timeout", 20.0), wait_ms=self.dynamic_wait_ms)
+        if self._dynamic is None:
+            return None
+        _log.info("dynamic render (JS fallback): %s", url)
+        self.politeness.wait(url)
+        return self._dynamic.render(url)
+
     def crawl(self, seed: str) -> list[str]:
         c = self.cfg.crawl
         max_pages = c.get("max_pages", 50)
@@ -74,16 +98,24 @@ class Crawler:
             except Exception:  # defensive: one bad page must not kill the run
                 _log.exception("unexpected error fetching %s", url)
                 continue
-            if res is None or not res.ok:
-                continue
+            final_url = res.url if res else url
+            ext = extract(res.html, final_url) if (res and res.ok) else None
 
-            ext = extract(res.html, res.url)
+            # JS fallback: if static yield is thin (or fetch failed), render in a
+            # real browser and keep whichever extraction is richer.
+            if ext is None or ext.text_len < self.dynamic_min_chars:
+                dhtml = self._maybe_render(final_url)
+                if dhtml:
+                    dext = extract(dhtml, final_url)
+                    if dext and (ext is None or dext.text_len > ext.text_len):
+                        ext = dext
+
+            if ext is None or ext.text_len == 0:
+                _log.debug("skip (no extractable content): %s", url)
+                continue
 
             # Quality: too-thin pages are marked, not silently kept.
             status = "ok" if ext.text_len >= self.min_text else "partial"
-            if ext.text_len == 0:
-                _log.debug("skip (no extractable content): %s", url)
-                continue
 
             # Tier 1/2 text dedup across pages.
             if self.text_dedup.is_duplicate(ext.markdown):
@@ -119,4 +151,6 @@ class Crawler:
                     queue.append((n, depth + 1))
 
         self.fetcher.close()
+        if self._dynamic is not None:
+            self._dynamic.close()
         return written
