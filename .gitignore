@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated data (rebuildable; not source of truth in git)
+index/
+# Crawled knowledge: ignore by default. Remove this line if you want to
+# version your knowledge base in git (it is small, markdown + images).
+knowledge/
+
+# Secrets / local env
+.env
+*.local.yaml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

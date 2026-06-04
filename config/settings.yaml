@@ -1,0 +1,53 @@
+# CortexCrawler — Phase 1 config. All knobs live here, never hardcoded (per architecture §0C/§6).
+
+crawl:
+  user_agent: "CortexCrawlerBot/0.1 (+https://example.com/bot; contact: you@example.com)"
+  obey_robots: true
+  rate_limit_per_domain: 1.0   # seconds between requests to the same domain
+  timeout: 20.0
+  max_pages: 50                # safety cap per run
+  max_depth: 2                 # 0 = only the seed URL
+  same_domain_only: true       # stay on the seed's registered domain
+
+extract:
+  min_text_chars: 200          # pages below this are marked status: empty/partial
+
+images:
+  enabled: true
+  min_width: 100               # R0 size gate
+  min_height: 100
+  max_aspect_ratio: 10.0       # R0 aspect gate (banners/dividers)
+  min_bytes: 2048              # R1 info gate (tiny = likely chrome)
+  allowed_types: [jpeg, jpg, png, webp, gif]
+  phash_hamming_threshold: 6   # <= this distance = near-duplicate image
+
+dedup:
+  text_near_dup: true          # MinHash across pages
+  minhash_threshold: 0.85      # Jaccard similarity to treat text as duplicate
+
+output:
+  root: "knowledge"            # local source-of-truth (mirrors future S3 layout)
+  image_base_url: ""           # set to your S3/CloudFront base later; empty = relative path
+
+# --- Phase 2: RAG layer. Defaults are LOCAL so it runs without AWS. ---
+rag:
+  chunk_target_tokens: 500
+  semantic_dedup_threshold: 0.97
+
+  embedder:
+    backend: "local"           # local | bedrock
+    dim: 512                   # local=512; for bedrock Titan use 1024
+    # model_id: "amazon.titan-embed-image-v1"   # bedrock only
+    # region: "us-east-1"
+
+  store:
+    backend: "local"           # local | s3vectors
+    path: "index/local_store"
+    # bucket: "my-vector-bucket"   # s3vectors only
+    # index: "cortex-kb"           # s3vectors only
+    # region: "us-east-1"
+
+  answer:
+    backend: "local"           # local | bedrock
+    # model_id: "amazon.nova-lite-v1:0"   # bedrock only
+    # region: "us-east-1"
