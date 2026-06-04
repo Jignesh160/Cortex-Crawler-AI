@@ -49,8 +49,17 @@ def _in_scope(url: str, include: list[str], exclude: list[str]) -> bool:
     return True
 
 
+def _body_after_frontmatter(text: str) -> str:
+    """Return the markdown body, skipping a leading YAML front-matter block."""
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return text
+
+
 def _top_lines(md: str, k: int = 3) -> list[str]:
-    """First k non-empty lines of a page body (where header/nav chrome sits)."""
+    """First k non-empty lines of a page body (where header/nav/title chrome sits)."""
     out: list[str] = []
     for ln in md.splitlines():
         s = ln.strip()
@@ -61,12 +70,13 @@ def _top_lines(md: str, k: int = 3) -> list[str]:
     return out
 
 
-def _global_boilerplate(per_page_top: list[list[str]], min_frac: float = 0.8) -> set[str]:
-    """Lines that appear at the top of (almost) every page = site chrome.
+def _global_boilerplate(per_page_top: list[list[str]], min_frac: float = 0.5) -> set[str]:
+    """Lines that appear at the top of many pages = site chrome (logo/nav/title).
 
-    Conservative: only considers the first few lines per page (so mid-page
-    section headings like 'Specifications' are never treated as boilerplate),
-    and requires a high cross-page frequency.
+    Conservative on WHERE: only the first few lines per page are considered, so
+    mid-page section headings like 'Specifications' are never treated as
+    boilerplate. A line shared by >= half the pages' top region is site chrome;
+    genuine page content rarely repeats identically across that many pages.
     """
     from collections import Counter
     n = len(per_page_top)
@@ -147,7 +157,6 @@ class Crawler:
         queue: deque[tuple[str, int]] = deque([(_normalize(seed), 0)])
         seen: set[str] = {_normalize(seed)}
         written: list[str] = []
-        page_tops: list[list[str]] = []   # top lines per page, for boilerplate detection
 
         while queue and len(written) < max_pages:
             url, depth = queue.popleft()
@@ -199,7 +208,6 @@ class Crawler:
                 status=status, depth=depth,
             )
             written.append(str(path))
-            page_tops.append(_top_lines(ext.markdown))
             _log.info("emit: %s", path)
 
             # Expand frontier.
@@ -217,14 +225,14 @@ class Crawler:
         if self._dynamic is not None:
             self._dynamic.close()
 
-        # Cross-page cleanup: strip site-title / nav chrome that repeats on (nearly)
-        # every page, so it doesn't leak into each page's content.
+        # Cross-page cleanup: strip site-title / nav chrome that repeats on many
+        # pages (including a generic page-title H1), so it doesn't leak everywhere.
+        contents = {fp: Path(fp).read_text(encoding="utf-8") for fp in written}
+        page_tops = [_top_lines(_body_after_frontmatter(t)) for t in contents.values()]
         boilerplate = _global_boilerplate(page_tops)
         if boilerplate:
             _log.info("stripping %d global boilerplate line(s) across %d pages",
                       len(boilerplate), len(written))
-            for fp in written:
-                p = Path(fp)
-                cleaned = _strip_lines(p.read_text(encoding="utf-8"), boilerplate)
-                p.write_text(cleaned, encoding="utf-8")
+            for fp, text in contents.items():
+                Path(fp).write_text(_strip_lines(text, boilerplate), encoding="utf-8")
         return written

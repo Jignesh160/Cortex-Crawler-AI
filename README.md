@@ -37,6 +37,40 @@ That's the whole surface your chatbot needs. Everything else is internal.
 cortex-crawl "https://your-site.com/" --max-pages 20 --max-depth 2
 cortex-index
 cortex-ask "your question" --top-k 5
+cortex-chunks --out datasets/chunks.jsonl   # RAG-ready chunks (one JSON record per chunk)
+```
+
+## Extraction quality (what makes the chunks good)
+
+- **Section headings are preserved.** Even when the underlying extractor would
+  flatten a page (e.g. Nuxt SSR sites), CortexCrawler re-injects the real `##`/`###`
+  section headings so chunking can split by topic. See
+  [CHANGELOG.md](CHANGELOG.md).
+- **Heading-aware, single-topic chunks** — Design / Performance / Safety / Specs
+  become separate chunks, each carrying its `heading` + `source_url`.
+- **Intra-page de-duplication** — the same block (e.g. specs as text *and* a table)
+  isn't emitted twice; **stat cards** like `Combined Power: 449 Hp (335 kW)` are
+  re-paired; repeated site-title/nav chrome is stripped.
+
+## Crawl scope
+
+Limit what gets crawled in `config/settings.yaml` (excluded URLs are never fetched
+or emitted):
+
+```yaml
+crawl:
+  include: []                       # if set, only matching URL globs are crawled
+  exclude: ["*/cookies*", "*/privacy*", "*/request-for-quote*", "*/login*"]
+```
+
+## RAG-ready chunk export
+
+`cortex-chunks` writes `datasets/chunks.jsonl`, one record per chunk:
+
+```json
+{"chunk_id":"...","text":"...","heading":"Performance","section_path":"... > Performance",
+ "source_url":"https://...","title":"iCAUR V27","topic":"iCAUR V27","modality":"text",
+ "image_url":"","images":["images/abc.png"]}
 ```
 
 Output lands under `knowledge/<site>/`:

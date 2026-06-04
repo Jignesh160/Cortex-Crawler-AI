@@ -14,6 +14,8 @@ htmlcov/
 
 # Generated data (rebuildable; not source of truth in git)
 index/
+datasets/
+knowledge_*/
 # Crawled knowledge: ignore by default. Remove this line if you want to
 # version your knowledge base in git (it is small, markdown + images).
 knowledge/
