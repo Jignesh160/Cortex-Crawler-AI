@@ -15,6 +15,9 @@ from pathlib import Path
 
 import yaml
 
+# Pure, stateless text-similarity utility (no crawler state) — shared across layers.
+from ..engine.dedup import NearDupFilter
+
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _IMG = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<url>[^)]+)\)")
 
@@ -26,6 +29,7 @@ class Chunk:
     title: str
     section_path: str
     text: str
+    heading: str = ""               # leaf section heading (the chunk's topic)
     modality: str = "text"          # text | image
     image_url: str = ""
     image_id: str = ""
@@ -48,14 +52,20 @@ def parse_markdown(path: Path) -> tuple[dict, str]:
 
 
 def _iter_sections(body: str):
-    """Yield (section_path, text) segments split on headings."""
+    """Yield (heading, section_path, text) segments split on heading boundaries.
+
+    `heading` is the nearest (leaf) heading; `section_path` is the full
+    breadcrumb (e.g. "Design > Premium Interior"). Content before the first
+    heading is yielded with an empty heading/path (the page preamble).
+    """
     stack: list[str] = []
     buf: list[str] = []
+    cur_heading = ""
     cur_path = ""
 
     def flush():
         text = "\n".join(buf).strip()
-        return (cur_path, text) if text else None
+        return (cur_heading, cur_path, text) if text else None
 
     for line in body.splitlines():
         m = _HEADING.match(line)
@@ -65,9 +75,9 @@ def _iter_sections(body: str):
                 yield seg
             buf = []
             level = len(m.group(1))
-            heading = m.group(2).strip()
+            cur_heading = m.group(2).strip()
             stack[:] = stack[: level - 1]
-            stack.append(heading)
+            stack.append(cur_heading)
             cur_path = " > ".join(stack)
         else:
             buf.append(line)
@@ -84,38 +94,42 @@ def chunk_file(path: Path, target_tokens: int = 500, overlap_tokens: int = 60) -
 
     chunks: list[Chunk] = []
     n = 0
+    # Intra-page near-dup filter: drop a chunk that repeats an earlier block on the
+    # SAME page (e.g. specs shown both as flattened text and as a table).
+    near_dup = NearDupFilter(threshold=0.9)
 
-    # --- text chunks: pack sections up to target size, never split a heading group
-    #     unless the section itself is too big (then window it with overlap) ---
-    for section_path, text in _iter_sections(body):
+    # --- text chunks: split on heading boundaries FIRST (one section = one topic),
+    #     then size-cap within a section that's too big (windowed with overlap) ---
+    def _emit(heading: str, section_path: str, body_text: str) -> None:
+        nonlocal n
+        if near_dup.is_duplicate(body_text):
+            return
+        n += 1
+        # Fold the heading into the chunk text so the embedding captures the topic.
+        text = f"{heading}\n\n{body_text}" if heading else body_text
+        chunks.append(Chunk(
+            chunk_id=f"{base_hash[:12]}-{n}",
+            source_url=source_url, title=title,
+            section_path=section_path or title, text=text,
+            heading=heading or title, content_hash=base_hash,
+        ))
+
+    for heading, section_path, text in _iter_sections(body):
         # Skip the auto-generated image appendix as text; images handled separately.
         if section_path.endswith("Images") and _IMG.search(text):
             continue
         if not text.strip():
             continue
         if _approx_tokens(text) <= target_tokens:
-            n += 1
-            chunks.append(Chunk(
-                chunk_id=f"{base_hash[:12]}-{n}",
-                source_url=source_url, title=title,
-                section_path=section_path or title, text=text,
-                content_hash=base_hash,
-            ))
+            _emit(heading, section_path, text)
         else:
             words = text.split()
             step = max(1, (target_tokens - overlap_tokens) * 4 // 5)  # words/chunk approx
             size = max(1, target_tokens * 4 // 5)
             for i in range(0, len(words), step):
                 piece = " ".join(words[i:i + size]).strip()
-                if not piece:
-                    continue
-                n += 1
-                chunks.append(Chunk(
-                    chunk_id=f"{base_hash[:12]}-{n}",
-                    source_url=source_url, title=title,
-                    section_path=section_path or title, text=piece,
-                    content_hash=base_hash,
-                ))
+                if piece:
+                    _emit(heading, section_path, piece)
 
     # --- image chunks: one per referenced image, carrying alt as searchable text ---
     seen_img: set[str] = set()

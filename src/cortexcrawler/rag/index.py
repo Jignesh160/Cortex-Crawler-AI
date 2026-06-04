@@ -58,6 +58,7 @@ def build_index(
             metadata={
                 "source_url": ch.source_url,
                 "title": ch.title,
+                "heading": ch.heading,
                 "section_path": ch.section_path,
                 "modality": ch.modality,
                 "image_url": ch.image_url,
