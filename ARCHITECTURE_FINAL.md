@@ -1,7 +1,14 @@
 # CortexCrawler AI — Final Architecture
 
-> **Definitive design.** Consolidates every decision made during planning. Nothing is
-> built yet — this is the target. Supersedes the original PDF and `ARCHITECTURE_v2.md`.
+> **⚠️ Scope note (current):** The shipped tool is a **crawler only** — it produces
+> clean `.md` + images for an external RAG pipeline to consume. The RAG layer
+> described below (chunking, embeddings, S3 Vectors, Nova) was built and validated
+> but later **removed** because the consuming chatbot owns chunking/embedding/
+> retrieval. This document is retained as design history; for current behavior see
+> `README.md` and `CHANGELOG.md`.
+
+> **Definitive design.** Consolidates every decision made during planning.
+> Supersedes the original PDF and `ARCHITECTURE_v2.md`.
 
 ---
 

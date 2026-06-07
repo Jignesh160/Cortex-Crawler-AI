@@ -38,28 +38,5 @@ dedup:
   minhash_threshold: 0.85      # Jaccard similarity to treat text as duplicate
 
 output:
-  root: "knowledge"            # local source-of-truth (mirrors future S3 layout)
-  image_base_url: ""           # set to your S3/CloudFront base later; empty = relative path
-
-# --- Phase 2: RAG layer. Defaults are LOCAL so it runs without AWS. ---
-rag:
-  chunk_target_tokens: 500
-  semantic_dedup_threshold: 0.97
-
-  embedder:
-    backend: "local"           # local | bedrock
-    dim: 512                   # local=512; for bedrock Titan use 1024
-    # model_id: "amazon.titan-embed-image-v1"   # bedrock only
-    # region: "us-east-1"
-
-  store:
-    backend: "local"           # local | s3vectors
-    path: "index/local_store"
-    # bucket: "my-vector-bucket"   # s3vectors only
-    # index: "cortex-kb"           # s3vectors only
-    # region: "us-east-1"
-
-  answer:
-    backend: "local"           # local | bedrock
-    # model_id: "amazon.nova-lite-v1:0"   # bedrock only
-    # region: "us-east-1"
+  root: "knowledge"            # where .md + images are written
+  image_base_url: ""           # optional: prefix image refs with an S3/CDN base URL

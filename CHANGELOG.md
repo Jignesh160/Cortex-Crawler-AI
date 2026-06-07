@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased — extraction & chunking quality for RAG
+## Unreleased — scope narrowed to a pure crawler
+
+**Breaking:** removed the entire `rag/` layer (chunking, chunks.jsonl export,
+file-watch, embeddings, vector store, retrieval, answer) and the Bedrock/S3 Vectors
+integration. CortexCrawler now does exactly one thing: **crawl → clean `.md` +
+images**. Chunking/embedding/retrieval belong to the consuming RAG pipeline.
+
+- Removed CLIs `cortex-index`, `cortex-ask`, `cortex-chunks`, `cortex-watch` and the
+  `cortex-crawl --chunks` flag. Remaining CLI: **`cortex-crawl`**.
+- Public API trimmed to `KnowledgeBase().crawl(url)`; dropped `index/search/ask/
+  crawl_and_chunk/for_aws`.
+- Removed the `[aws]` extra and `numpy` dependency. Config no longer has a `rag`
+  section or AWS env overrides.
+- All extraction quality (heading preservation, image/text dedup, stat-card
+  pairing, boilerplate stripping, scope globs, any-render-type support) is retained.
+
+## Earlier — extraction & chunking quality for RAG
 
 Focus: produce **section-structured, single-topic** chunks instead of flattened
 paragraphs. Evaluated against a real Nuxt SSR site (icaurbahrain.com).

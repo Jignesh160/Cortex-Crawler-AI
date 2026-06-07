@@ -1,76 +1,77 @@
 # CortexCrawler AI
 
-Multimodal RAG knowledge-base builder. Crawls a few known sites, extracts **text +
-images**, and produces clean, deduplicated **markdown** that a chatbot ingests
-directly. See [ARCHITECTURE_FINAL.md](ARCHITECTURE_FINAL.md) for the full design.
+Crawl websites into clean, deduplicated **markdown + images** for RAG / chatbot
+knowledge bases. CortexCrawler does one job well: turn a site into a tidy
+`knowledge/<site>/` folder of `.md` files (with provenance front-matter) plus
+quality-filtered, deduplicated images. **Chunking, embedding, and retrieval are
+out of scope by design** — your existing RAG pipeline consumes the output.
 
-Installable Python package (`cortexcrawler`). Runs anywhere with built-in defaults
-(no AWS required); flip to Amazon Bedrock + S3 Vectors via config when you go live.
+Installable Python package (`cortexcrawler`), zero config required.
 
 ## Install
 
 ```bash
 pip install "git+https://github.com/Jignesh160/Context-Crawler-AI.git"
-# optional extras:
-pip install "cortexcrawler[aws]"      # Bedrock Titan/Nova + S3 Vectors
-pip install "cortexcrawler[dynamic]"  # Playwright for JS-heavy sites
+pip install "cortexcrawler[dynamic]"   # optional: Playwright for JS / SPA sites
 ```
 
-## Use from your chatbot (the public API)
+## Use from your pipeline (the public API)
 
 ```python
 from cortexcrawler import KnowledgeBase
 
-kb = KnowledgeBase()                  # built-in defaults; or KnowledgeBase(config=load_config("my.yaml"))
-kb.crawl("https://your-site.com/")    # site -> knowledge/*.md + images
-kb.index()                            # knowledge/ -> vector index
-
-answer = kb.ask("How do I reset my password?")   # grounded, cited answer
-hits   = kb.search("password reset", top_k=5)     # raw citable chunks
+kb = KnowledgeBase()                      # built-in defaults; or KnowledgeBase(config=load_config("my.yaml"))
+paths = kb.crawl("https://your-site.com/")  # -> knowledge/<site>/*.md (+ images/)
+# then point YOUR chunker/embedder/retriever at the knowledge/ folder
 ```
 
-That's the whole surface your chatbot needs. Everything else is internal.
+That's the whole surface. See [examples/use_crawler.py](examples/use_crawler.py).
 
-## CLI (same operations)
+## CLI
 
 ```bash
 cortex-crawl "https://your-site.com/" --max-pages 20 --max-depth 2
-cortex-crawl "https://your-site.com/" --chunks   # crawl AND auto-export chunks.jsonl in one go
-cortex-index
-cortex-ask "your question" --top-k 5
-cortex-chunks --out datasets/chunks.jsonl   # RAG-ready chunks (one JSON record per chunk)
-cortex-watch  --out datasets/chunks.jsonl   # watch knowledge/ and auto-rebuild chunks.jsonl on .md edits
 ```
 
-`cortex-watch` keeps `chunks.jsonl` in sync: edit any `.md` under `knowledge/` and
-the export regenerates automatically (mtime polling, no extra dependency). Leave it
-running, or wire `cortexcrawler.rag.watch.watch_and_export(...)` into your own process.
+## Output
+
+```
+knowledge/<site>/<slug>.md              # clean markdown + image refs + YAML front-matter
+knowledge/<site>/images/<sha256>.jpg    # kept images, content-addressed
+knowledge/<site>/images/<sha256>.json   # per-image provenance sidecar (alt, caption, page_url, ...)
+```
+
+Each `.md` front-matter carries `source_url`, `title`, `fetched_at`, `content_hash`
+and the page's image refs — everything your RAG ingest needs for citations.
 
 ## Works on any site type
 
-The crawler auto-adapts to how a page delivers its content — no per-site config:
+Auto-adapts to how a page delivers content — no per-site config:
 
 | Site type | How it's handled |
 |-----------|------------------|
 | Static HTML / WordPress / server-rendered | Fast static fetch (httpx) |
 | Nuxt / Next **SSR** | Static fetch + section-heading re-injection |
-| **SPA / client-rendered** (React/Vue/Angular/Svelte) | Auto-detected shell → rendered in headless Chromium |
+| **SPA / client-rendered** (React/Vue/Angular/Svelte) | Auto-detected shell → headless Chromium render |
 
 Static-first for speed; a real browser is used only when a page is thin or is an
-unhydrated SPA shell. Install the browser path with
-`pip install "cortexcrawler[dynamic]"` then `playwright install chromium`.
+unhydrated SPA shell. For the browser path: `pip install "cortexcrawler[dynamic]"`
+then `playwright install chromium`.
 
-## Extraction quality (what makes the chunks good)
+## Extraction quality
 
-- **Section headings are preserved.** Even when the underlying extractor would
-  flatten a page (e.g. Nuxt SSR sites), CortexCrawler re-injects the real `##`/`###`
-  section headings so chunking can split by topic. See
-  [CHANGELOG.md](CHANGELOG.md).
-- **Heading-aware, single-topic chunks** — Design / Performance / Safety / Specs
-  become separate chunks, each carrying its `heading` + `source_url`.
-- **Intra-page de-duplication** — the same block (e.g. specs as text *and* a table)
-  isn't emitted twice; **stat cards** like `Combined Power: 449 Hp (335 kW)` are
-  re-paired; repeated site-title/nav chrome is stripped.
+- **Section headings preserved.** Even when the extractor would flatten a page
+  (e.g. Nuxt SSR), CortexCrawler re-injects the real `##`/`###` headings so your
+  chunker can split by topic.
+- **Meaningful content only** — boilerplate/nav removed; repeated site-title/nav
+  chrome stripped across pages; split number/label "stat cards" re-paired
+  (`Combined Power: 449 Hp (335 kW)`).
+- **No junk images** — quality gate drops icons/spacers/banners/logos by
+  size / aspect / byte-size / type.
+- **No duplicates** — text: sha256 + MinHash across pages; images: sha256 +
+  **perceptual hash** (catches resized/re-saved copies).
+- **Polite** — per-domain rate limiting, honest User-Agent. `obey_robots` is
+  `false` by default (first-party crawling); set it `true` for third-party sites.
 
 ## Crawl scope
 
@@ -83,89 +84,21 @@ crawl:
   exclude: ["*/cookies*", "*/privacy*", "*/request-for-quote*", "*/login*"]
 ```
 
-## RAG-ready chunk export
-
-`cortex-chunks` writes `datasets/chunks.jsonl`, one record per chunk:
-
-```json
-{"chunk_id":"...","text":"...","heading":"Performance","section_path":"... > Performance",
- "source_url":"https://...","title":"iCAUR V27","topic":"iCAUR V27","modality":"text",
- "image_url":"","images":["images/abc.png"]}
-```
-
-Output lands under `knowledge/<site>/`:
-
-```
-knowledge/<site>/<slug>.md              # text in markdown + image refs + front-matter
-knowledge/<site>/images/<sha256>.jpg    # kept images, content-addressed
-knowledge/<site>/images/<sha256>.json   # per-image provenance sidecar
-```
-
-All knobs live in [config/settings.yaml](config/settings.yaml) (rate limit, depth,
-image size/aspect gates, dedup thresholds). Nothing is hardcoded.
-
-### What Phase 1 guarantees
-
-| Guarantee | How |
-|-----------|-----|
-| Polite & legal | robots.txt obeyed, per-domain rate limit, honest User-Agent |
-| Clean text | trafilatura extraction → markdown; thin pages flagged `partial` |
-| **No junk images** | quality gate: size / aspect / byte-size / type |
-| **No duplicates** | text: sha256 + MinHash · images: sha256 + **perceptual hash**, across all pages |
-| Grounded | every page + image carries `source_url` provenance for citations |
-| Swappable engine | downstream reads `.md` files only — never engine internals |
-
-## Phase 2 (built) — RAG layer
-
-Reads `knowledge/**/*.md` (never `engine/`) and builds a retrievable, citable index.
-**Runs locally with no AWS** — every cloud piece sits behind an interface with a local
-default, so you can verify the whole pipeline today and flip to AWS via config.
-
-### Build the index, then ask
-
-```bash
-cortex-index
-cortex-ask "books about history and war" --top-k 3
-cortex-ask "a mystery novel cover" --modality image
-```
-
-### `rag/` modules
-
-| Module | Does | Local default | Production (config switch) |
-|--------|------|---------------|----------------------------|
-| `chunk.py` | heading-aware chunking + image chunks, with provenance | — | — |
-| `embed.py` | text + image embeddings | hashed bag-of-words | **Titan Multimodal** (Bedrock) |
-| `semantic_dedup.py` | Tier-3 semantic dedup gate before insert | cosine threshold | same |
-| `store.py` | vector upsert + similarity search | numpy `.npz` on disk | **Amazon S3 Vectors** |
-| `retrieve.py` | query → embed → search (modality filter) | — | — |
-| `answer.py` | grounded, cited answer | assembled context | **Amazon Nova Lite** |
-
 ## Configuration
 
-Built-in defaults work out of the box. Override via (increasing precedence):
-1. `config/settings.yaml` in the working dir (or `$CORTEX_CONFIG`)
-2. environment variables — `CORTEX_EMBEDDER_BACKEND`, `CORTEX_STORE_BACKEND`,
-   `CORTEX_ANSWER_BACKEND`, `CORTEX_VECTOR_BUCKET`, `CORTEX_VECTOR_INDEX`,
-   `AWS_REGION`, `CORTEX_IMAGE_BASE_URL`, `CORTEX_LOG_LEVEL`
-
-### Flip to AWS (config only, no code change)
-
-Set `embedder.backend: bedrock` (Titan), `store.backend: s3vectors` (bucket+index),
-`answer.backend: bedrock` (Nova Lite). Requires `pip install "cortexcrawler[aws]"` +
-AWS creds. Because vectors derive from the markdown, switching is just a re-index —
-never a re-crawl.
+Built-in defaults work out of the box. Override via a `config/settings.yaml` in the
+working dir (or `$CORTEX_CONFIG`). All knobs — rate limit, depth, image gates, dedup
+thresholds, dynamic-render fallback, scope globs — live there.
 
 ## Project layout
 
 ```
 src/cortexcrawler/
-  engine/    in-house crawler (fetch, politeness, extract, media, dedup, emit, crawl)
-  rag/       RAG layer (chunk, embed, store, semantic_dedup, index, retrieve, answer)
-  api.py     KnowledgeBase — the public API your chatbot imports
-  cli.py     console entry points: cortex-crawl / cortex-index / cortex-ask
-  log.py     logging · retry.py  retry/backoff
-knowledge/   SOURCE OF TRUTH — markdown + images (rebuildable index derives from this)
-index/       generated vector index (local_store) — rebuildable from knowledge/
+  engine/    crawler: fetch, politeness, extract, media, dedup, emit, crawl, dynamic
+  api.py     KnowledgeBase — the public API your pipeline imports
+  cli.py     console entry point: cortex-crawl
+  log.py     logging
+knowledge/   OUTPUT — markdown + images (what your RAG pipeline ingests)
 config/      optional settings.yaml (defaults are built in)
 tests/       pytest suite
 ```

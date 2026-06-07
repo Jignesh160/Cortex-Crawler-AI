@@ -1,10 +1,9 @@
 """Configuration with self-contained defaults.
 
 The library works with ZERO config files (important when pulled into a chatbot):
-built-in DEFAULTS are used unless overridden by, in increasing precedence:
+built-in DEFAULTS are used unless overridden by:
   1. DEFAULTS (this file)
   2. a YAML file: explicit path arg, else $CORTEX_CONFIG, else ./config/settings.yaml
-  3. environment variables for deploy-specific/secret values (region, buckets, ...)
 """
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from typing import Any
 
 import yaml
 
-# Built-in production-safe defaults. Local backends so it runs anywhere out of the box.
+# Built-in defaults so the crawler runs anywhere out of the box.
 DEFAULTS: dict[str, Any] = {
     "crawl": {
         "user_agent": "CortexCrawlerBot/0.1 (+https://example.com/bot)",
@@ -47,13 +46,6 @@ DEFAULTS: dict[str, Any] = {
     },
     "dedup": {"text_near_dup": True, "minhash_threshold": 0.85},
     "output": {"root": "knowledge", "image_base_url": ""},
-    "rag": {
-        "chunk_target_tokens": 500,
-        "semantic_dedup_threshold": 0.97,
-        "embedder": {"backend": "local", "dim": 512},
-        "store": {"backend": "local", "path": "index/local_store"},
-        "answer": {"backend": "local"},
-    },
 }
 
 
@@ -65,29 +57,6 @@ def _deep_merge(base: dict, over: dict) -> dict:
         else:
             out[k] = v
     return out
-
-
-def _env_overrides(cfg: dict) -> dict:
-    """Map well-known env vars onto config (deploy-specific + secrets)."""
-    cfg = copy.deepcopy(cfg)
-    rag = cfg.setdefault("rag", {})
-    region = os.getenv("AWS_REGION") or os.getenv("CORTEX_AWS_REGION")
-    if region:
-        for sub in ("embedder", "store", "answer"):
-            rag.setdefault(sub, {})["region"] = region
-    if os.getenv("CORTEX_EMBEDDER_BACKEND"):
-        rag.setdefault("embedder", {})["backend"] = os.environ["CORTEX_EMBEDDER_BACKEND"]
-    if os.getenv("CORTEX_STORE_BACKEND"):
-        rag.setdefault("store", {})["backend"] = os.environ["CORTEX_STORE_BACKEND"]
-    if os.getenv("CORTEX_ANSWER_BACKEND"):
-        rag.setdefault("answer", {})["backend"] = os.environ["CORTEX_ANSWER_BACKEND"]
-    if os.getenv("CORTEX_VECTOR_BUCKET"):
-        rag.setdefault("store", {})["bucket"] = os.environ["CORTEX_VECTOR_BUCKET"]
-    if os.getenv("CORTEX_VECTOR_INDEX"):
-        rag.setdefault("store", {})["index"] = os.environ["CORTEX_VECTOR_INDEX"]
-    if os.getenv("CORTEX_IMAGE_BASE_URL"):
-        cfg.setdefault("output", {})["image_base_url"] = os.environ["CORTEX_IMAGE_BASE_URL"]
-    return cfg
 
 
 @dataclass
@@ -114,10 +83,6 @@ class Config:
     def output(self) -> dict[str, Any]:
         return self.raw.get("output", {})
 
-    @property
-    def rag(self) -> dict[str, Any]:
-        return self.raw.get("rag", {})
-
 
 def _resolve_path(path: str | Path | None) -> Path | None:
     if path:
@@ -129,31 +94,7 @@ def _resolve_path(path: str | Path | None) -> Path | None:
     return cwd_cfg if cwd_cfg.exists() else None
 
 
-def _maybe_load_dotenv() -> None:
-    """Best-effort: load a local .env into the environment if python-dotenv is
-    installed. No-op otherwise (env vars set directly still work)."""
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
-    env_path = Path.cwd() / ".env"
-    if env_path.exists():
-        load_dotenv(env_path, override=False)
-
-
-def _reconcile_dims(cfg: dict) -> dict:
-    """Keep embedder dim and vector-store dim consistent. Titan = 1024 by default."""
-    rag = cfg.setdefault("rag", {})
-    emb = rag.setdefault("embedder", {})
-    store = rag.setdefault("store", {})
-    if emb.get("backend") == "bedrock" and emb.get("dim", 512) == 512:
-        emb["dim"] = 1024  # Titan multimodal default
-    store["dim"] = emb.get("dim", 1024 if emb.get("backend") == "bedrock" else 512)
-    return cfg
-
-
 def load_config(path: str | Path | None = None) -> Config:
-    _maybe_load_dotenv()
     data = copy.deepcopy(DEFAULTS)
     p = _resolve_path(path)
     if p is not None:
@@ -162,6 +103,4 @@ def load_config(path: str | Path | None = None) -> Config:
         with open(p, "r", encoding="utf-8") as fh:
             file_cfg = yaml.safe_load(fh) or {}
         data = _deep_merge(data, file_cfg)
-    data = _env_overrides(data)
-    data = _reconcile_dims(data)
     return Config(raw=data)

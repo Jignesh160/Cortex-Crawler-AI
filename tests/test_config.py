@@ -7,17 +7,9 @@ def test_defaults_self_contained(tmp_path, monkeypatch):
     monkeypatch.delenv("CORTEX_CONFIG", raising=False)
     cfg = load_config()
     assert cfg.crawl["max_pages"] == 50
-    assert cfg.rag["embedder"]["backend"] == "local"
+    assert cfg.crawl["obey_robots"] is False
     assert cfg.images["min_width"] == 100
-
-
-def test_env_overrides(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("CORTEX_EMBEDDER_BACKEND", "bedrock")
-    monkeypatch.setenv("AWS_REGION", "us-east-1")
-    cfg = load_config()
-    assert cfg.rag["embedder"]["backend"] == "bedrock"
-    assert cfg.rag["embedder"]["region"] == "us-east-1"
+    assert cfg.output["root"] == "knowledge"
 
 
 def test_file_overrides_defaults(tmp_path, monkeypatch):
@@ -28,3 +20,9 @@ def test_file_overrides_defaults(tmp_path, monkeypatch):
     assert cfg.crawl["max_pages"] == 7
     # untouched keys keep defaults
     assert cfg.crawl["max_depth"] == 2
+
+
+def test_missing_config_file_raises(tmp_path):
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        load_config(tmp_path / "nope.yaml")

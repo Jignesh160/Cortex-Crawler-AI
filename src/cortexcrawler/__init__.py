@@ -1,4 +1,8 @@
-"""CortexCrawler AI — multimodal RAG knowledge-base builder.
+"""CortexCrawler AI — crawl websites into clean markdown + images for RAG.
+
+Produces one .md per page (with provenance front-matter) plus deduplicated,
+quality-filtered images. Chunking/embedding/retrieval are intentionally out of
+scope — your RAG pipeline consumes the knowledge/ folder.
 
 Public API:
     from cortexcrawler import KnowledgeBase
