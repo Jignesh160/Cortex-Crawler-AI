@@ -20,7 +20,9 @@ import yaml
 DEFAULTS: dict[str, Any] = {
     "crawl": {
         "user_agent": "CortexCrawlerBot/0.1 (+https://example.com/bot)",
-        "obey_robots": True,
+        # Default false: this tool crawls first-party (own) sites. Set true if you
+        # ever crawl third-party sites you don't control.
+        "obey_robots": False,
         "rate_limit_per_domain": 1.0,
         "timeout": 20.0,
         "max_pages": 50,
