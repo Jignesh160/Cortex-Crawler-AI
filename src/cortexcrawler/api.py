@@ -83,6 +83,17 @@ class KnowledgeBase:
         """Crawl a site into knowledge/*.md (+ images). Returns written file paths."""
         return Crawler(self.config).crawl(seed_url)
 
+    def crawl_and_chunk(self, seed_url: str,
+                        chunks_path: str = "datasets/chunks.jsonl") -> dict[str, Any]:
+        """Crawl a site to .md + images, then auto-export RAG chunks. Returns stats."""
+        from .rag.export import export_chunks
+        written = self.crawl(seed_url)
+        stats = export_chunks(
+            self.config.output.get("root", "knowledge"), chunks_path,
+            target_tokens=self.config.rag.get("chunk_target_tokens", 500))
+        stats["pages"] = len(written)
+        return stats
+
     def index(self) -> dict[str, Any]:
         """Build/refresh the vector index from knowledge/. Returns stats."""
         rag = self.config.rag

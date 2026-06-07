@@ -27,6 +27,10 @@ def crawl_cmd(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", default=None)
     ap.add_argument("--max-pages", type=int, default=None)
     ap.add_argument("--max-depth", type=int, default=None)
+    ap.add_argument("--chunks", nargs="?", const="datasets/chunks.jsonl", default=None,
+                    metavar="PATH",
+                    help="after crawling, auto-export RAG chunks to PATH "
+                         "(default datasets/chunks.jsonl)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -37,6 +41,13 @@ def crawl_cmd(argv: list[str] | None = None) -> int:
 
     written = KnowledgeBase(config=cfg).crawl(args.seed)
     print(f"\nDone. {len(written)} markdown file(s) written.")
+
+    if args.chunks and written:
+        from .rag.export import export_chunks
+        stats = export_chunks(cfg.output.get("root", "knowledge"), args.chunks,
+                              target_tokens=cfg.rag.get("chunk_target_tokens", 500))
+        print(f"[chunks] auto-exported {stats['total']} records "
+              f"(text={stats['text']} image={stats['image']}) -> {stats['path']}")
     return 0 if written else 1
 
 

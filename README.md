@@ -35,6 +35,7 @@ That's the whole surface your chatbot needs. Everything else is internal.
 
 ```bash
 cortex-crawl "https://your-site.com/" --max-pages 20 --max-depth 2
+cortex-crawl "https://your-site.com/" --chunks   # crawl AND auto-export chunks.jsonl in one go
 cortex-index
 cortex-ask "your question" --top-k 5
 cortex-chunks --out datasets/chunks.jsonl   # RAG-ready chunks (one JSON record per chunk)
