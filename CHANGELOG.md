@@ -48,6 +48,13 @@ duplicated.
   `chunks.jsonl` in sync automatically: any add/edit/remove of a `.md` under
   `knowledge/` triggers a re-export (mtime polling, dependency-free).
 
+### Works on any render type
+- `engine/extract.is_spa_shell()` detects unhydrated client-rendered app shells
+  (React/Vue/Angular/Svelte mount nodes with little server text). The crawler now
+  forces a headless-browser render for SPA shells, in addition to thin/failed
+  pages — so static, SSR, and fully client-rendered sites all extract correctly.
+  SSR/static pages with real content are never needlessly rendered.
+
 ### Compatibility
 - No CLI breakage: `cortex-crawl` / `cortex-index` / `cortex-ask` unchanged;
   `cortex-chunks` added. JS/Playwright dynamic-fallback path still works.

@@ -46,6 +46,20 @@ cortex-watch  --out datasets/chunks.jsonl   # watch knowledge/ and auto-rebuild 
 the export regenerates automatically (mtime polling, no extra dependency). Leave it
 running, or wire `cortexcrawler.rag.watch.watch_and_export(...)` into your own process.
 
+## Works on any site type
+
+The crawler auto-adapts to how a page delivers its content — no per-site config:
+
+| Site type | How it's handled |
+|-----------|------------------|
+| Static HTML / WordPress / server-rendered | Fast static fetch (httpx) |
+| Nuxt / Next **SSR** | Static fetch + section-heading re-injection |
+| **SPA / client-rendered** (React/Vue/Angular/Svelte) | Auto-detected shell → rendered in headless Chromium |
+
+Static-first for speed; a real browser is used only when a page is thin or is an
+unhydrated SPA shell. Install the browser path with
+`pip install "cortexcrawler[dynamic]"` then `playwright install chromium`.
+
 ## Extraction quality (what makes the chunks good)
 
 - **Section headings are preserved.** Even when the underlying extractor would

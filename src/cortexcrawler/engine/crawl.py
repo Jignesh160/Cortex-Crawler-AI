@@ -18,7 +18,7 @@ from ..log import get_logger
 from .config import Config
 from .dedup import TextDedup, content_hash
 from .emit import Emitter
-from .extract import extract
+from .extract import extract, is_spa_shell
 from .fetch import Fetcher
 from .media import MediaPipeline
 from .politeness import Politeness
@@ -172,9 +172,16 @@ class Crawler:
             final_url = res.url if res else url
             ext = extract(res.html, final_url) if (res and res.ok) else None
 
-            # JS fallback: if static yield is thin (or fetch failed), render in a
-            # real browser and keep whichever extraction is richer.
-            if ext is None or ext.text_len < self.dynamic_min_chars:
+            # JS fallback: render in a real browser when static yield is thin, the
+            # fetch failed, OR the page is a client-rendered SPA shell. Keep whichever
+            # extraction is richer. This makes the crawler work across static, SSR,
+            # and fully client-rendered (React/Vue/Angular) sites.
+            needs_render = (
+                ext is None
+                or ext.text_len < self.dynamic_min_chars
+                or ((res and res.ok) and is_spa_shell(res.html))
+            )
+            if needs_render:
                 dhtml = self._maybe_render(final_url)
                 if dhtml:
                     dext = extract(dhtml, final_url)

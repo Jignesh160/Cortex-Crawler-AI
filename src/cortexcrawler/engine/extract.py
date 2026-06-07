@@ -33,6 +33,9 @@ class Extraction:
 
 
 _WS = re.compile(r"\s+")
+# Common client-rendered-app mount points: if present with little server-rendered
+# text, the real content is built by JavaScript and needs a browser to extract.
+_SPA_ROOT_IDS = {"app", "__nuxt", "__next", "root", "q-app", "___gatsby", "svelte"}
 _HEAD_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 _BLOCK_TAGS = {"p", "li", "td", "th", "blockquote", "figcaption", "dd", "dt"}
 _SIG_LEN = 60          # chars of normalized text used as a block signature
@@ -174,6 +177,25 @@ def _inject_headings(html: str, base_md: str) -> str:
             done.add(sig)
         out.append(ln)
     return "\n".join(out)
+
+
+def is_spa_shell(html: str, text_threshold: int = 1500) -> bool:
+    """True if the HTML looks like an unhydrated client-rendered app shell.
+
+    Heuristic: a known SPA mount node is present but the server-delivered body
+    text is small. Server-rendered/static pages (rich body text) return False, so
+    this only forces a browser render for genuinely JS-built pages.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    body = soup.body
+    if body is None:
+        return False
+    if len(_clean(body.get_text())) >= text_threshold:
+        return False  # plenty of server-rendered content; no browser needed
+    for el in soup.find_all(id=True):
+        if el.get("id") in _SPA_ROOT_IDS:
+            return True
+    return False
 
 
 def _discover_images(html: str, base_url: str) -> list[DiscoveredImage]:
