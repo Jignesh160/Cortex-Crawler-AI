@@ -38,7 +38,12 @@ cortex-crawl "https://your-site.com/" --max-pages 20 --max-depth 2
 cortex-index
 cortex-ask "your question" --top-k 5
 cortex-chunks --out datasets/chunks.jsonl   # RAG-ready chunks (one JSON record per chunk)
+cortex-watch  --out datasets/chunks.jsonl   # watch knowledge/ and auto-rebuild chunks.jsonl on .md edits
 ```
+
+`cortex-watch` keeps `chunks.jsonl` in sync: edit any `.md` under `knowledge/` and
+the export regenerates automatically (mtime polling, no extra dependency). Leave it
+running, or wire `cortexcrawler.rag.watch.watch_and_export(...)` into your own process.
 
 ## Extraction quality (what makes the chunks good)
 

@@ -74,6 +74,27 @@ def chunks_cmd(argv: list[str] | None = None) -> int:
     return 0
 
 
+def watch_cmd(argv: list[str] | None = None) -> int:
+    setup_logging()
+    ap = argparse.ArgumentParser(prog="cortex-watch",
+                                 description="Watch knowledge/ and auto-rebuild chunks.jsonl on .md changes")
+    ap.add_argument("--config", default=None)
+    ap.add_argument("--out", default="datasets/chunks.jsonl", help="output JSONL path")
+    ap.add_argument("--interval", type=float, default=2.0, help="poll interval (seconds)")
+    args = ap.parse_args(argv)
+
+    from .rag.watch import watch_and_export
+    cfg = load_config(args.config)
+    root = cfg.output.get("root", "knowledge")
+    tokens = cfg.rag.get("chunk_target_tokens", 500)
+    print(f"[watch] watching '{root}/' -> {args.out} (every {args.interval}s). Ctrl+C to stop.")
+    try:
+        watch_and_export(root, args.out, interval=args.interval, target_tokens=tokens)
+    except KeyboardInterrupt:
+        print("\n[watch] stopped.")
+    return 0
+
+
 def ask_cmd(argv: list[str] | None = None) -> int:
     setup_logging("WARNING")  # keep query output clean
     ap = argparse.ArgumentParser(prog="cortex-ask",
@@ -94,7 +115,8 @@ def ask_cmd(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # `python -m cortexcrawler.cli crawl ...`
-    cmds = {"crawl": crawl_cmd, "index": index_cmd, "ask": ask_cmd, "chunks": chunks_cmd}
+    cmds = {"crawl": crawl_cmd, "index": index_cmd, "ask": ask_cmd,
+            "chunks": chunks_cmd, "watch": watch_cmd}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print("usage: python -m cortexcrawler.cli {crawl|index|ask} ...")
         sys.exit(2)

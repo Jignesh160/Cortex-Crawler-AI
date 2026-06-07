@@ -44,6 +44,9 @@ duplicated.
   `datasets/chunks.jsonl`, one record per chunk:
   `{chunk_id, text, heading, section_path, source_url, title, topic, modality,
   image_url, images}` — so consumers don't have to re-chunk the markdown.
+- New `cortex-watch` command + `rag/watch.watch_and_export()` keep
+  `chunks.jsonl` in sync automatically: any add/edit/remove of a `.md` under
+  `knowledge/` triggers a re-export (mtime polling, dependency-free).
 
 ### Compatibility
 - No CLI breakage: `cortex-crawl` / `cortex-index` / `cortex-ask` unchanged;

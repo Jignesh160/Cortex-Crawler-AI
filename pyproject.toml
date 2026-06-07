@@ -36,6 +36,7 @@ cortex-crawl = "cortexcrawler.cli:crawl_cmd"
 cortex-index = "cortexcrawler.cli:index_cmd"
 cortex-ask = "cortexcrawler.cli:ask_cmd"
 cortex-chunks = "cortexcrawler.cli:chunks_cmd"
+cortex-watch = "cortexcrawler.cli:watch_cmd"
 
 [project.urls]
 Homepage = "https://github.com/Jignesh160/Context-Crawler-AI"
