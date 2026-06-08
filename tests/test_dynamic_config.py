@@ -10,3 +10,13 @@ def test_dynamic_fallback_defaults(tmp_path, monkeypatch):
     assert cfg.crawl["dynamic_fallback"] is True
     assert cfg.crawl["dynamic_min_chars"] == 200
     assert "dynamic_wait_ms" in cfg.crawl
+    assert cfg.crawl["render_mode"] == "auto"  # fast by default
+
+
+def test_render_mode_override(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CORTEX_CONFIG", raising=False)
+    p = tmp_path / "c.yaml"
+    p.write_text("crawl:\n  render_mode: always\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.crawl["render_mode"] == "always"

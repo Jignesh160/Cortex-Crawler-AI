@@ -58,6 +58,22 @@ Static-first for speed; a real browser is used only when a page is thin or is an
 unhydrated SPA shell. For the browser path: `pip install "cortexcrawler[dynamic]"`
 then `playwright install chromium`.
 
+### Crawling all pages on JS-navigation sites
+
+Some sites build their **navigation menu with JavaScript**, so the links to other
+pages don't exist in the static HTML — a normal crawl then only reaches the handful
+of links that *are* static. Use `--render-mode always` (or `crawl.render_mode:
+always`) to render every page in a browser and discover the JS-rendered nav links,
+so the crawl reaches the whole site:
+
+```bash
+cortex-crawl "https://your-site.com/" --render-mode always --max-pages 50 --max-depth 3
+```
+
+This is slower (every page goes through the browser) but complete. Default `auto`
+renders only when a page is thin/SPA. Tip: you can also just pass known page URLs as
+separate seeds.
+
 ## Extraction quality
 
 - **Section headings preserved.** Even when the extractor would flatten a page

@@ -31,6 +31,8 @@ DEFAULTS: dict[str, Any] = {
         "dynamic_fallback": True,   # auto-render JS pages when static yield is thin
         "dynamic_min_chars": 200,   # static extraction below this -> retry via browser
         "dynamic_wait_ms": 2000,    # settle time after load
+        "render_mode": "auto",      # auto = render only when needed; always = render
+                                    # every page (discovers JS-rendered nav links)
         "include": [],              # if set, only URLs matching a glob are crawled
         "exclude": [                # URLs matching any glob are never fetched/emitted
             "*/cookies*", "*/legalNotice", "*/legal-notice", "*/privacy*",

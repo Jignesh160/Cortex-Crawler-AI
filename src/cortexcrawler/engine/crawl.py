@@ -125,6 +125,10 @@ class Crawler:
         self.dynamic_enabled = c.get("dynamic_fallback", True)
         self.dynamic_min_chars = c.get("dynamic_min_chars", 200)
         self.dynamic_wait_ms = c.get("dynamic_wait_ms", 2000)
+        # render_mode: "auto" = render only when static yield is thin / SPA shell;
+        # "always" = render every page so JS-rendered nav links are also discovered
+        # (needed to crawl ALL pages on sites with JavaScript navigation menus).
+        self.render_mode = c.get("render_mode", "auto")
         self._dynamic = None          # DynamicRenderer | None (lazy)
         self._dynamic_tried = False   # only attempt to launch once per run
 
@@ -172,12 +176,14 @@ class Crawler:
             final_url = res.url if res else url
             ext = extract(res.html, final_url) if (res and res.ok) else None
 
-            # JS fallback: render in a real browser when static yield is thin, the
-            # fetch failed, OR the page is a client-rendered SPA shell. Keep whichever
-            # extraction is richer. This makes the crawler work across static, SSR,
-            # and fully client-rendered (React/Vue/Angular) sites.
+            # JS rendering: render in a real browser when static yield is thin, the
+            # fetch failed, the page is a client-rendered SPA shell, OR render_mode
+            # is "always". Keep the richer CONTENT, and merge in the rendered LINKS so
+            # JavaScript-rendered nav menus are followed (crawl ALL pages on JS-nav
+            # sites). Works across static, SSR, and fully client-rendered sites.
             needs_render = (
-                ext is None
+                self.render_mode == "always"
+                or ext is None
                 or ext.text_len < self.dynamic_min_chars
                 or ((res and res.ok) and is_spa_shell(res.html))
             )
@@ -185,8 +191,15 @@ class Crawler:
                 dhtml = self._maybe_render(final_url)
                 if dhtml:
                     dext = extract(dhtml, final_url)
-                    if dext and (ext is None or dext.text_len > ext.text_len):
-                        ext = dext
+                    if dext:
+                        if ext is None or dext.text_len > ext.text_len:
+                            base = dext
+                        else:
+                            base = ext
+                        # union links (rendered DOM usually exposes more nav links)
+                        merged = list(dict.fromkeys((ext.links if ext else []) + dext.links))
+                        base.links = merged
+                        ext = base
 
             if ext is None or ext.text_len == 0:
                 _log.debug("skip (no extractable content): %s", url)

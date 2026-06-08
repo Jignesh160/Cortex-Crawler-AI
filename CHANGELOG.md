@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — full-site crawling on JS-navigation sites
+
+- New `crawl.render_mode` (`auto` | `always`) + `cortex-crawl --render-mode always`.
+  In `always` mode every page is rendered in a headless browser and links are
+  discovered from the rendered DOM, so JavaScript-built navigation menus are
+  followed and the crawl can reach the whole site. `auto` (default) keeps the fast
+  static-first behavior (render only when a page is thin/SPA). When a page is
+  rendered, static + rendered links are merged for maximum coverage.
+
 ## Unreleased — scope narrowed to a pure crawler
 
 **Breaking:** removed the entire `rag/` layer (chunking, chunks.jsonl export,

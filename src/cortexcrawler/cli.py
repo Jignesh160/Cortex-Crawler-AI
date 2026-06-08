@@ -20,6 +20,9 @@ def crawl_cmd(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", default=None)
     ap.add_argument("--max-pages", type=int, default=None)
     ap.add_argument("--max-depth", type=int, default=None)
+    ap.add_argument("--render-mode", choices=["auto", "always"], default=None,
+                    help="'always' renders every page in a browser so JS-rendered "
+                         "nav links are discovered (crawl all pages on JS-nav sites)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -27,6 +30,8 @@ def crawl_cmd(argv: list[str] | None = None) -> int:
         cfg.raw["crawl"]["max_pages"] = args.max_pages
     if args.max_depth is not None:
         cfg.raw["crawl"]["max_depth"] = args.max_depth
+    if args.render_mode is not None:
+        cfg.raw["crawl"]["render_mode"] = args.render_mode
 
     written = KnowledgeBase(config=cfg).crawl(args.seed)
     print(f"\nDone. {len(written)} markdown file(s) written.")
